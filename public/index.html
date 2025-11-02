@@ -9,7 +9,6 @@
     html, body { height:100%; margin:0; background:radial-gradient(120vw 120vh at 50% 50%,#0a1320 0%,var(--bg) 60%); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif; color:var(--text); overflow:hidden; }
     body.display-mode { cursor:none; }
     body.display-mode .panel { display:none !important; }
-
     .stage{position:fixed; inset:0; display:grid; grid-template-rows:1fr auto;}
     .face{display:grid; place-items:center;}
     .eyes{display:grid; grid-auto-flow:column; gap:min(10vw,80px); align-items:center;}
@@ -21,26 +20,21 @@
     .eye.blink .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     @keyframes blinkTop{ 0%{top:-66%} 45%{top:6%} 55%{top:8%} 100%{top:-66%} }
     @keyframes blinkBot{ 0%{bottom:-66%} 45%{bottom:6%} 55%{bottom:8%} 100%{bottom:-66%} }
-
     .iris{position:absolute; width:46%; aspect-ratio:1; border-radius:50%; left:27%; top:27%; display:grid; place-items:center; z-index:1; background:radial-gradient(circle at 30% 30%,#2ff7f7 0%,#12bdbd 25%,#0e8d8d 60%,#085555 100%); box-shadow:0 0 20px var(--glow),0 0 80px #0ff3 inset; transform:translate(0,0); transition:transform .10s ease, filter .10s ease, opacity .06s;}
     .pupil{ width:calc(45% * var(--pupil-scale)); aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 40% 40%,#10232d 0%, var(--pupil) 50%, #000 100%); box-shadow:0 0 16px #000 inset; transition:width .12s; }
     .spark{ position:absolute; width:18%; height:18%; border-radius:50%; background:radial-gradient(circle,#ffffffcc 0%,transparent 70%); left:22%; top:22%; }
     .eye.blink .iris{ animation:blinkIris .36s ease-in-out; }
     @keyframes blinkIris{ 0%{opacity:1; transform:translate(0,0) scale(1)} 35%{opacity:0; transform:translate(0,-10%) scale(.9)} 60%{opacity:0; transform:translate(0,-10%) scale(.9)} 100%{opacity:1; transform:translate(0,0) scale(1)} }
-
     .winkL .eye#eyeL .lid.top,.winkR .eye#eyeR .lid.top{ animation:blinkTop .36s ease-in-out forwards; }
     .winkL .eye#eyeL .lid.bot,.winkR .eye#eyeR .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     .winkL .eye#eyeL .iris,.winkR .eye#eyeR .iris{ animation:blinkIris .36s ease-in-out; }
-
     .mouth{ position:absolute; left:50%; transform:translateX(-50%); bottom:8vh; width:min(56vw,780px); height:min(9vh,120px); border-radius:32px; background:linear-gradient(180deg,#06121a,#08151f); box-shadow:0 8px 28px #0008 inset,0 0 18px #0009; overflow:hidden; display:grid; place-items:center; }
     .bars{ display:grid; grid-auto-flow:column; gap:6px; width:90%; height:70%; align-items:end; }
     .bar{ width:100%; border-radius:8px 8px 0 0; background:linear-gradient(180deg,var(--accent),var(--mouth)); height:10%; box-shadow:0 0 14px #0ff6; }
-
     .panel{ backdrop-filter:blur(8px); background:var(--panel); position:fixed; left:12px; right:12px; bottom:10px; display:flex; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:14px; align-items:center; }
     button{ appearance:none; border:none; outline:none; background:#0b1728; color:var(--text); padding:10px 12px; border-radius:12px; font-weight:600; box-shadow:0 2px 0 #0006 inset,0 0 0 1px #0e243a; }
     button:hover{ filter:brightness(1.12) } button:active{ transform:translateY(1px) }
     .status{ opacity:.8; font-size:.9rem; margin-left:6px; }
-
     #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
   </style>
   <!-- Ably CDN -->
@@ -63,7 +57,6 @@
     <div class="mouth"><div class="bars" id="bars"></div></div>
   </div>
 
-  <!-- Controller-only panel -->
   <div class="panel" id="panel">
     <span id="roleBadge">Role: …</span>
     <input id="room" type="text" placeholder="room-id (e.g., sajbot)" style="min-width:150px" />
@@ -87,14 +80,14 @@
   <button id="tapToUnmute">🔊 Tap to hear</button>
 
   <script>
-    // --- Role & URL
+    // ---------- Role & URL ----------
     const q = new URLSearchParams(location.search);
-    const role = (q.get('role') || 'controller').toLowerCase(); // default controller
+    const role = (q.get('role') || 'controller').toLowerCase(); // default: controller
     const urlRoom = q.get('room') || '';
     document.getElementById('roleBadge').textContent = 'Role: ' + role;
     if (role === 'display') document.body.classList.add('display-mode');
 
-    // --- DOM
+    // ---------- DOM ----------
     const face = document.getElementById('face');
     const eyeL = document.getElementById('eyeL'), eyeR = document.getElementById('eyeR');
     const irisL = document.getElementById('irisL'), irisR = document.getElementById('irisR');
@@ -104,14 +97,14 @@
     const rtcState = document.getElementById('rtcState');
     const tapToUnmute = document.getElementById('tapToUnmute');
 
-    // --- Eyes
+    // ---------- Eyes ----------
     const LOOK_MAP = { left:-1, center:0, right:+1 };
     function applyLook(dir){ const sx=(LOOK_MAP[dir] ?? 0)*26; irisL.style.transform=`translate(${sx}%,0)`; irisR.style.transform=`translate(${sx}%,0)`; }
     function doBlink(){ [eyeL,eyeR].forEach(e=>e.classList.add('blink')); setTimeout(()=>[eyeL,eyeR].forEach(e=>e.classList.remove('blink')), 400); }
     function doWink(side){ const cls = side==='L' ? 'winkL' : 'winkR'; face.classList.add(cls); setTimeout(()=>face.classList.remove('winkL','winkR'), 420); }
     applyLook('center');
 
-    // --- Bars (controller mic level)
+    // ---------- Bars (controller mic level) ----------
     function renderBars(n){ barsWrap.innerHTML=''; for(let i=0;i<n;i++){ const b=document.createElement('div'); b.className='bar'; b.style.height='6%'; barsWrap.appendChild(b); } }
     renderBars(18);
     let audioCtx, analyser, data, rafId;
@@ -133,7 +126,7 @@
       })();
     }
 
-    // --- Ably helper (works with CDN build)
+    // ---------- Ably helpers (CDN build uses callbacks) ----------
     function ablyConnectedOnce(client){
       return new Promise((resolve, reject) => {
         const t = setTimeout(()=>reject(new Error('Ably connect timeout')), 10000);
@@ -143,7 +136,7 @@
       });
     }
 
-    // --- Signaling via Ably
+    // ---------- Signaling via Ably ----------
     let ably, channel, pc, ctrlChan=null;
     function updateRTC(){ rtcState.textContent = 'RTC:' + (pc?.connectionState || '?'); }
 
@@ -190,9 +183,8 @@
 
     async function connectAbly(room){
       wsState.textContent = 'SIG:connecting…';
-
-      // IMPORTANT: clientId must match server tokenRequest; queryTime fixes clock skew (40170)
-      ably = new Ably.Realtime.Promise({
+      // NOTE: CDN build uses Ably.Realtime (no .Promise). queryTime fixes clock skew; clientId matches function.
+      ably = new Ably.Realtime({
         authUrl: location.origin + '/.netlify/functions/ably-token',
         clientId: 'phonebot-client',
         queryTime: true,
@@ -226,6 +218,7 @@
         }
       });
     }
+
     function sendSignal(obj){ channel && channel.publish('signal', obj); }
     function sendCtrl(payload){ ctrlChan && ctrlChan.readyState==='open' && ctrlChan.send(JSON.stringify(payload)); }
 
@@ -305,13 +298,13 @@
     }
 
     // Autoplay helper for display
-    tapToUnmute.onclick = async () => {
+    document.getElementById('tapToUnmute').onclick = async () => {
       try{
         if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
         if (audioCtx.state !== 'running') await audioCtx.resume();
         sink.muted=false; sink.volume=1.0; await sink.play();
       }catch(_){}
-      tapToUnmute.style.display='none';
+      document.getElementById('tapToUnmute').style.display='none';
     };
 
     // Idle blink
