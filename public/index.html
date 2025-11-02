@@ -37,7 +37,7 @@
     .status{ opacity:.8; font-size:.9rem; margin-left:6px; }
     #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
   </style>
-  <!-- Ably CDN -->
+  <!-- Ably CDN (callback-based API) -->
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
 <body>
@@ -126,17 +126,7 @@
       })();
     }
 
-    // ---------- Ably helpers (CDN build uses callbacks) ----------
-    function ablyConnectedOnce(client){
-      return new Promise((resolve, reject) => {
-        const t = setTimeout(()=>reject(new Error('Ably connect timeout')), 10000);
-        client.connection.once('connected', ()=>{ clearTimeout(t); resolve(); });
-        client.connection.once('failed', (e)=>{ clearTimeout(t); reject(e); });
-        client.connection.once('suspended', (e)=>{ clearTimeout(t); reject(e); });
-      });
-    }
-
-    // ---------- Signaling via Ably ----------
+    // ---------- Signaling via Ably (CDN = callbacks only) ----------
     let ably, channel, pc, ctrlChan=null;
     function updateRTC(){ rtcState.textContent = 'RTC:' + (pc?.connectionState || '?'); }
 
@@ -181,9 +171,9 @@
       return pc;
     }
 
-    async function connectAbly(room){
+    function connectAbly(room){
       wsState.textContent = 'SIG:connecting…';
-      // NOTE: CDN build uses Ably.Realtime (no .Promise). queryTime fixes clock skew; clientId matches function.
+      // CDN build: Ably.Realtime (no Promise). queryTime fixes clock skew; clientId matches function.
       ably = new Ably.Realtime({
         authUrl: location.origin + '/.netlify/functions/ably-token',
         clientId: 'phonebot-client',
@@ -193,30 +183,49 @@
         log: { level: 2 }
       });
 
-      try {
-        await ablyConnectedOnce(ably);
+      // When Ably connects, set up channel & subscribe THEN proceed.
+      ably.connection.on('connected', () => {
         wsState.textContent = 'SIG:connected';
-      } catch (err) {
-        wsState.textContent = 'SIG:ERROR';
-        console.error('Ably signaling failed:', err);
-        alert('Ably signaling failed: ' + (err?.message || err));
-        throw err;
-      }
+        channel = ably.channels.get('phonebot:' + room);
 
-      channel = ably.channels.get('phonebot:' + room);
+        channel.subscribe('signal', async (msg) => {
+          const m = msg.data;
+          try {
+            if (m.type === 'offer' && role === 'display') {
+              await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
+              const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+              channel.publish('signal', { type:'answer', sdp: ans.sdp });
+            } else if (m.type === 'answer' && role === 'controller') {
+              await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
+            } else if (m.type === 'ice') {
+              await pc.addIceCandidate(m.candidate);
+            }
+          } catch (err) {
+            console.warn('RTC signal handling error:', err);
+          }
+        });
 
-      channel.subscribe('signal', async (msg) => {
-        const m = msg.data;
-        if (m.type === 'offer' && role === 'display') {
-          await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
-          const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
-          channel.publish('signal', { type:'answer', sdp: ans.sdp });
-        } else if (m.type === 'answer' && role === 'controller') {
-          await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
-        } else if (m.type === 'ice') {
-          try { await pc.addIceCandidate(m.candidate); } catch(e){ console.warn(e); }
+        // After signaling is ready, proceed with role-specific media
+        if (role === 'controller') startControllerMediaAndOffer();
+        else {
+          try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
+          const unlock = async ()=>{
+            try{
+              if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+              if (audioCtx.state !== 'running') await audioCtx.resume();
+              if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
+              if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
+            }catch(_){}
+            window.removeEventListener('click', unlock);
+            window.removeEventListener('touchstart', unlock);
+          };
+          window.addEventListener('click', unlock, { once:true });
+          window.addEventListener('touchstart', unlock, { once:true, passive:true });
         }
       });
+
+      ably.connection.on('failed', (e) => { wsState.textContent = 'SIG:ERROR'; console.error('Ably failed', e); alert('Ably failed: ' + (e?.reason?.message || e?.message || e)); });
+      ably.connection.on('suspended', (e) => { wsState.textContent = 'SIG:SUSP'; console.warn('Ably suspended', e); });
     }
 
     function sendSignal(obj){ channel && channel.publish('signal', obj); }
@@ -247,32 +256,15 @@
 
     async function connect(room){
       makePeer();
-      await connectAbly(room);
-      if (role === 'controller') {
-        await startControllerMediaAndOffer();
-        navigator.mediaDevices.addEventListener('devicechange', async ()=>{ try{ await hardReconnect(); }catch(_){} });
-      } else {
-        try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
-        const unlock = async ()=>{
-          try{
-            if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-            if (audioCtx.state !== 'running') await audioCtx.resume();
-            if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
-            if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
-          }catch(_){}
-          window.removeEventListener('click', unlock);
-          window.removeEventListener('touchstart', unlock);
-        };
-        window.addEventListener('click', unlock, { once:true });
-        window.addEventListener('touchstart', unlock, { once:true, passive:true });
-      }
+      connectAbly(room); // no await; we continue when connection 'connected' fires
     }
 
     async function hardReconnect(){
       try{ pc.getSenders().forEach(s => s.track && s.track.stop()); }catch(_){}
       try{ pc.close(); }catch(_){}
       makePeer();
-      await startControllerMediaAndOffer();
+      // Re-negotiate if already connected & channel exists
+      if (role === 'controller' && channel) startControllerMediaAndOffer();
     }
 
     // Wire UI
@@ -298,13 +290,13 @@
     }
 
     // Autoplay helper for display
-    document.getElementById('tapToUnmute').onclick = async () => {
+    tapToUnmute.onclick = async () => {
       try{
         if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
         if (audioCtx.state !== 'running') await audioCtx.resume();
         sink.muted=false; sink.volume=1.0; await sink.play();
       }catch(_){}
-      document.getElementById('tapToUnmute').style.display='none';
+      tapToUnmute.style.display='none';
     };
 
     // Idle blink
