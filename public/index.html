@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PhoneBot – Buttons + Solid Audio (Netlify + Ably + TURN)</title>
+  <title>PhoneBot – Buttons + Solid Audio (Netlify + Ably)</title>
   <style>
     :root { --bg:#0a0f14; --eye:#0d1b2a; --iris:#1ee6e6; --pupil:#031015; --glow:#19caca; --accent:#6ef3ff; --mouth:#12d8b5; --panel:#0f172a80; --text:#d7f9ff; --pupil-scale:1; }
     html, body { height:100%; margin:0; background:radial-gradient(120vw 120vh at 50% 50%,#0a1320 0%,var(--bg) 60%); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif; color:var(--text); overflow:hidden; }
     body.display-mode { cursor:none; }
     body.display-mode .panel { display:none !important; }
-
     .stage{position:fixed; inset:0; display:grid; grid-template-rows:1fr auto;}
     .face{display:grid; place-items:center;}
     .eyes{display:grid; grid-auto-flow:column; gap:min(10vw,80px); align-items:center;}
@@ -21,27 +20,22 @@
     .eye.blink .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     @keyframes blinkTop{ 0%{top:-66%} 45%{top:6%} 55%{top:8%} 100%{top:-66%} }
     @keyframes blinkBot{ 0%{bottom:-66%} 45%{bottom:6%} 55%{bottom:8%} 100%{bottom:-66%} }
-
     .iris{position:absolute; width:46%; aspect-ratio:1; border-radius:50%; left:27%; top:27%; display:grid; place-items:center; z-index:1; background:radial-gradient(circle at 30% 30%,#2ff7f7 0%,#12bdbd 25%,#0e8d8d 60%,#085555 100%); box-shadow:0 0 20px var(--glow),0 0 80px #0ff3 inset; transform:translate(0,0); transition:transform .10s ease, filter .10s ease, opacity .06s;}
     .pupil{ width:calc(45% * var(--pupil-scale)); aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 40% 40%,#10232d 0%, var(--pupil) 50%, #000 100%); box-shadow:0 0 16px #000 inset; transition:width .12s; }
     .spark{ position:absolute; width:18%; height:18%; border-radius:50%; background:radial-gradient(circle,#ffffffcc 0%,transparent 70%); left:22%; top:22%; }
     .eye.blink .iris{ animation:blinkIris .36s ease-in-out; }
     @keyframes blinkIris{ 0%{opacity:1; transform:translate(0,0) scale(1)} 35%{opacity:0; transform:translate(0,-10%) scale(.9)} 60%{opacity:0; transform:translate(0,-10%) scale(.9)} 100%{opacity:1; transform:translate(0,0) scale(1)} }
-
     .winkL .eye#eyeL .lid.top,.winkR .eye#eyeR .lid.top{ animation:blinkTop .36s ease-in-out forwards; }
     .winkL .eye#eyeL .lid.bot,.winkR .eye#eyeR .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     .winkL .eye#eyeL .iris,.winkR .eye#eyeR .iris{ animation:blinkIris .36s ease-in-out; }
-
     .mouth{ position:absolute; left:50%; transform:translateX(-50%); bottom:8vh; width:min(56vw,780px); height:min(9vh,120px); border-radius:32px; background:linear-gradient(180deg,#06121a,#08151f); box-shadow:0 8px 28px #0008 inset,0 0 18px #0009; overflow:hidden; display:grid; place-items:center; }
     .bars{ display:grid; grid-auto-flow:column; gap:6px; width:90%; height:70%; align-items:end; }
     .bar{ width:100%; border-radius:8px 8px 0 0; background:linear-gradient(180deg,var(--accent),var(--mouth)); height:10%; box-shadow:0 0 14px #0ff6; }
-
     .panel{ backdrop-filter:blur(8px); background:var(--panel); position:fixed; left:12px; right:12px; bottom:10px; display:flex; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:14px; align-items:center; }
     button{ appearance:none; border:none; outline:none; background:#0b1728; color:var(--text); padding:10px 12px; border-radius:12px; font-weight:600; box-shadow:0 2px 0 #0006 inset,0 0 0 1px #0e243a; }
     button:hover{ filter:brightness(1.12) } button:active{ transform:translateY(1px) }
     .status{ opacity:.8; font-size:.9rem; margin-left:6px; }
-
-    #tapToHear{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
+    #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
   </style>
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
@@ -82,18 +76,16 @@
   </div>
 
   <audio id="sink" autoplay playsinline style="display:none"></audio>
-  <button id="tapToHear">🔊 Tap to hear</button>
+  <button id="tapToUnmute">🔊 Tap to hear</button>
 
   <script>
-    // --- Role & URL ---
+    // ========= Role & DOM =========
     const q = new URLSearchParams(location.search);
-    const role   = (q.get('role') || 'controller').toLowerCase(); // default controller
-    const urlRoom= q.get('room') || '';
-    const mode   = (q.get('mode') || '').toLowerCase(); // 'lan' to force host-only (same Wi-Fi)
+    const role = (q.get('role') || 'controller').toLowerCase();
+    const urlRoom = q.get('room') || '';
     document.getElementById('roleBadge').textContent = 'Role: ' + role;
     if (role === 'display') document.body.classList.add('display-mode');
 
-    // --- DOM ---
     const face = document.getElementById('face');
     const eyeL = document.getElementById('eyeL'), eyeR = document.getElementById('eyeR');
     const irisL = document.getElementById('irisL'), irisR = document.getElementById('irisR');
@@ -101,16 +93,16 @@
     const sink = document.getElementById('sink');
     const wsState = document.getElementById('wsState');
     const rtcState = document.getElementById('rtcState');
-    const tapToHear = document.getElementById('tapToHear');
+    const tapToUnmute = document.getElementById('tapToUnmute');
 
-    // --- Eyes ---
+    // ========= Eyes =========
     const LOOK_MAP = { left:-1, center:0, right:+1 };
     function applyLook(dir){ const sx=(LOOK_MAP[dir] ?? 0)*26; irisL.style.transform=`translate(${sx}%,0)`; irisR.style.transform=`translate(${sx}%,0)`; }
     function doBlink(){ [eyeL,eyeR].forEach(e=>e.classList.add('blink')); setTimeout(()=>[eyeL,eyeR].forEach(e=>e.classList.remove('blink')), 400); }
     function doWink(side){ const cls = side==='L' ? 'winkL' : 'winkR'; face.classList.add(cls); setTimeout(()=>face.classList.remove('winkL','winkR'), 420); }
     applyLook('center');
 
-    // --- Bars (controller mic level) ---
+    // ========= Bars =========
     function renderBars(n){ barsWrap.innerHTML=''; for(let i=0;i<n;i++){ const b=document.createElement('div'); b.className='bar'; b.style.height='6%'; barsWrap.appendChild(b); } }
     renderBars(18);
     let audioCtx, analyser, data, rafId;
@@ -132,105 +124,62 @@
       })();
     }
 
-    // --- Ably helper (CDN) ---
-    function ablyConnectedOnce(client){
-      return new Promise((resolve, reject) => {
-        const t = setTimeout(()=>reject(new Error('Ably connect timeout')), 12000);
-        client.connection.once('connected', ()=>{ clearTimeout(t); resolve(); });
-        client.connection.once('failed', (e)=>{ clearTimeout(t); reject(e); });
-        client.connection.once('suspended', (e)=>{ clearTimeout(t); reject(e); });
-      });
-    }
-
-    // --- Signaling via Ably + WebRTC ---
+    // ========= Ably + WebRTC =========
     let ably, channel, pc, ctrlChan=null;
-
     function updateRTC(){ rtcState.textContent = 'RTC:' + (pc?.connectionState || '?'); }
 
     function makePeer(){
-      // ICE config: LAN or Internet (STUN+TURN). Fill TURN values below.
-      const iceCfg = (mode === 'lan')
-        ? { iceServers: [], iceCandidatePoolSize: 2 } // host-only (same Wi-Fi)
-        : {
-            iceServers: [
-              { urls: ['stun:stun.l.google.com:19302'] },
-              // TURN relay (replace with your real TURN host/creds)
-              {
-                urls: ['turn:YOUR_TURN_HOST:3478', 'turns:YOUR_TURN_HOST:5349'],
-                username: 'TURN_USERNAME',
-                credential: 'TURN_PASSWORD'
-              }
-            ],
-            iceCandidatePoolSize: 2
-          };
-
-      pc = new RTCPeerConnection(iceCfg);
-      window.pc = pc;
-
-      pc.onconnectionstatechange = () => {
-        updateRTC();
-        console.log('[RTC] state =', pc.connectionState);
-      };
-      pc.oniceconnectionstatechange = () => console.log('[ICE] conn =', pc.iceConnectionState);
-      pc.onicegatheringstatechange  = () => console.log('[ICE] gathering =', pc.iceGatheringState);
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          console.log('[ICE] local cand:', e.candidate.type);
-          sendSignal({ type:'ice', candidate:e.candidate });
-        } else {
-          console.log('[ICE] local gather complete');
-        }
-      };
+      pc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }] });
+      pc.onconnectionstatechange = updateRTC;
+      pc.oniceconnectionstatechange = updateRTC;
+      pc.onicecandidate = e => { if (e.candidate) sendSignal({ type:'ice', candidate:e.candidate }); };
 
       if (role === 'controller') {
         ctrlChan = pc.createDataChannel('ctrl');
-        ctrlChan.onopen  = () => { console.log('[CTRL] open'); sendCtrl({ t:'blink' }); };
-        ctrlChan.onclose = () => console.log('[CTRL] closed');
-        ctrlChan.onerror = (e) => console.warn('[CTRL] error', e);
       } else {
         pc.ondatachannel = (e) => {
           if (e.channel.label === 'ctrl') {
             const ch = e.channel;
-            ch.onopen = () => console.log('[CTRL] display channel open');
             ch.onmessage = (ev) => {
               try {
-                const m = JSON.parse(ev.data);
-                if (m.t === 'blink') doBlink();
-                else if (m.t === 'wink') doWink(m.side);
-                else if (m.t === 'look') applyLook(m.dir);
-                else if (m.t === 'testTone') {
+                const msg = JSON.parse(ev.data);
+                if (msg.t === 'blink') doBlink();
+                else if (msg.t === 'wink') doWink(msg.side);
+                else if (msg.t === 'look') applyLook(msg.dir);
+                else if (msg.t === 'testTone') {
                   if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-                  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                  const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
                   o.connect(g).connect(audioCtx.destination); o.frequency.value = 880; g.gain.value = 0.2;
                   o.start(); setTimeout(()=>{ o.stop(); o.disconnect(); g.disconnect(); }, 400);
                 }
-              } catch(e) { console.warn(e); }
+              } catch(e){ console.warn(e); }
             };
           }
         };
       }
 
-      // Ensure display can receive audio even if offer arrives later
-      if (role === 'display' && !pc.getTransceivers().length) {
-        try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
-      }
-
       pc.ontrack = async (e) => {
         if (role !== 'display') return;
-        console.log('[RTC] ontrack: streams', e.streams?.length);
         const st = new MediaStream();
         e.streams[0].getAudioTracks().forEach(t => st.addTrack(t));
         sink.srcObject = st; sink.muted = false; sink.volume = 1.0;
-        try { await sink.play(); console.log('[AUDIO] playing'); }
-        catch { tapToHear.style.display='inline-flex'; }
+        try { await sink.play(); } catch { tapToUnmute.style.display='inline-flex'; }
       };
 
       return pc;
     }
 
-    async function connectAbly(room){
+    // Use the PROMISE variant explicitly; fall back if not present
+    function makeAblyInstance(opts){
+      const RT = (Ably.Realtime && Ably.Realtime.Promise) ? Ably.Realtime.Promise : Ably.Realtime;
+      return new RT(opts);
+    }
+
+    function connectAbly(room){
       wsState.textContent = 'SIG:connecting…';
-      ably = new Ably.Realtime({
+
+      // Promise-based Ably + authUrl (no authCallback anywhere)
+      ably = makeAblyInstance({
         authUrl: location.origin + '/.netlify/functions/ably-token',
         clientId: 'phonebot-client',
         queryTime: true,
@@ -239,44 +188,58 @@
         log: { level: 2 }
       });
 
-      try {
-        await ablyConnectedOnce(ably);
+      // Use event listeners; in Promise build, .once returns a promise too, but .on works in both
+      ably.connection.on('connected', () => {
         wsState.textContent = 'SIG:connected';
-      } catch (err) {
-        wsState.textContent = 'SIG:ERROR';
-        console.error('Ably signaling failed:', err);
-        alert('Ably signaling failed: ' + (err?.message || err));
-        throw err;
-      }
+        channel = ably.channels.get('phonebot:' + room);
 
-      channel = ably.channels.get('phonebot:' + room);
-      channel.subscribe('signal', async (msg) => {
-        const m = msg.data;
-        if (m.type === 'offer' && role === 'display') {
-          await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
-          const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
-          channel.publish('signal', { type:'answer', sdp: ans.sdp });
-        } else if (m.type === 'answer' && role === 'controller') {
-          await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
-        } else if (m.type === 'ice') {
-          try { await pc.addIceCandidate(m.candidate); } catch(e){ console.warn(e); }
+        channel.subscribe('signal', async (msg) => {
+          const m = msg.data;
+          try {
+            if (m.type === 'offer' && role === 'display') {
+              await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
+              const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+              channel.publish('signal', { type:'answer', sdp: ans.sdp });
+            } else if (m.type === 'answer' && role === 'controller') {
+              await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
+            } else if (m.type === 'ice') {
+              await pc.addIceCandidate(m.candidate);
+            }
+          } catch (err) {
+            console.warn('RTC signal handling error:', err);
+          }
+        });
+
+        if (role === 'controller') startControllerMediaAndOffer();
+        else {
+          try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
+          const unlock = async ()=>{
+            try{
+              if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+              if (audioCtx.state !== 'running') await audioCtx.resume();
+              if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
+              if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
+            }catch(_){}
+            window.removeEventListener('click', unlock);
+            window.removeEventListener('touchstart', unlock);
+          };
+          window.addEventListener('click', unlock, { once:true });
+          window.addEventListener('touchstart', unlock, { once:true, passive:true });
         }
       });
+
+      ably.connection.on('failed', (e) => { wsState.textContent='SIG:ERROR'; console.error('Ably failed', e); alert('Ably failed: ' + (e?.reason?.message || e?.message || e)); });
+      ably.connection.on('suspended', (e) => { wsState.textContent='SIG:SUSP'; console.warn('Ably suspended', e); });
     }
 
     function sendSignal(obj){ channel && channel.publish('signal', obj); }
-    function sendCtrl(payload){
-      if (ctrlChan && ctrlChan.readyState==='open') ctrlChan.send(JSON.stringify(payload));
-      else console.warn('[CTRL] not open', payload);
-    }
+    function sendCtrl(payload){ ctrlChan && ctrlChan.readyState==='open' && ctrlChan.send(JSON.stringify(payload)); }
 
     async function startControllerMediaAndOffer(){
-      console.log('[MEDIA] requesting mic…');
       const stream = await navigator.mediaDevices.getUserMedia({
         audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 },
         video:false
       });
-      console.log('[MEDIA] mic tracks:', stream.getAudioTracks().length);
 
       pc.getSenders().forEach(s => { try{ if (s.track) s.track.stop(); }catch(_){} });
       stream.getAudioTracks().forEach(t => pc.addTrack(t, stream));
@@ -293,39 +256,21 @@
       const offer = await pc.createOffer({ offerToReceiveAudio:false });
       await pc.setLocalDescription(offer);
       sendSignal({ type:'offer', sdp: offer.sdp });
-      console.log('[SIGNAL] offer sent');
     }
 
-    async function connect(room){
+    function connect(room){
       makePeer();
-      await connectAbly(room);
-      if (role === 'controller') {
-        await startControllerMediaAndOffer();
-        navigator.mediaDevices.addEventListener('devicechange', async ()=>{ try{ await hardReconnect(); }catch(_){} });
-      } else {
-        const unlock = async ()=>{
-          try{
-            if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-            if (audioCtx.state !== 'running') await audioCtx.resume();
-            if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
-            if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
-          }catch(_){}
-          window.removeEventListener('click', unlock);
-          window.removeEventListener('touchstart', unlock);
-        };
-        window.addEventListener('click', unlock, { once:true });
-        window.addEventListener('touchstart', unlock, { once:true, passive:true });
-      }
+      connectAbly(room);
     }
 
     async function hardReconnect(){
       try{ pc.getSenders().forEach(s => s.track && s.track.stop()); }catch(_){}
       try{ pc.close(); }catch(_){}
       makePeer();
-      await startControllerMediaAndOffer();
+      if (role === 'controller' && channel) startControllerMediaAndOffer();
     }
 
-    // Wire UI
+    // UI wiring
     if (role === 'display' && urlRoom) {
       connect(urlRoom);
     } else {
@@ -346,16 +291,15 @@
       document.getElementById('reconnectBtn').onclick = () => hardReconnect();
     }
 
-    tapToHear.onclick = async () => {
+    tapToUnmute.onclick = async () => {
       try{
         if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
         if (audioCtx.state !== 'running') await audioCtx.resume();
         sink.muted=false; sink.volume=1.0; await sink.play();
       }catch(_){}
-      tapToHear.style.display='none';
+      tapToUnmute.style.display='none';
     };
 
-    // Idle blink
     setInterval(()=> Math.random()<0.18 && doBlink(), 3800);
   </script>
 </body>

@@ -1,5 +1,5 @@
 // netlify/functions/ably-token.js
-const Ably = require('ably/promises'); // IMPORTANT: promises build
+const Ably = require('ably/promises'); // <-- PROMISES BUILD (important)
 
 exports.handler = async function () {
   try {
@@ -10,7 +10,7 @@ exports.handler = async function () {
 
     const rest = new Ably.Rest(apiKey);
 
-    // clientId must match index.html (phonebot-client)
+    // If you want to enforce a clientId, keep this in sync with index.html
     const tokenRequest = await rest.auth.createTokenRequest({
       clientId: 'phonebot-client',
       capability: JSON.stringify({
