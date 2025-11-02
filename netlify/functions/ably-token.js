@@ -1,16 +1,16 @@
 // netlify/functions/ably-token.js
-const Ably = require('ably');
+const Ably = require('ably/promises'); // <-- PROMISES BUILD (important)
 
 exports.handler = async function () {
   try {
-    const apiKey = process.env.ABLY_API_KEY; // set in Netlify → Site config → Environment variables
+    const apiKey = process.env.ABLY_API_KEY;
     if (!apiKey) {
       return { statusCode: 500, body: 'Missing ABLY_API_KEY env var' };
     }
 
     const rest = new Ably.Rest(apiKey);
 
-    // NOTE: clientId must match the one used in index.html (phonebot-client)
+    // If you want to enforce a clientId, keep this in sync with index.html
     const tokenRequest = await rest.auth.createTokenRequest({
       clientId: 'phonebot-client',
       capability: JSON.stringify({
@@ -25,6 +25,6 @@ exports.handler = async function () {
       body: JSON.stringify(tokenRequest)
     };
   } catch (err) {
-    return { statusCode: 500, body: String(err) };
+    return { statusCode: 500, body: String(err && err.stack || err) };
   }
 };

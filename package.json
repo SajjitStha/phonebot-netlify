@@ -1,8 +1,9 @@
 {
-    "name": "phonebot-netlify",
-    "private": true,
-    "version": "1.0.0",
-    "dependencies": {
-        "ably": "^1.2.47"
-    }
+  "private": true,
+  "name": "phonebot-site",
+  "version": "1.0.0",
+  "license": "MIT",
+  "dependencies": {
+    "ably": "^1.2.47"
+  }
 }
