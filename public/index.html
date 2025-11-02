@@ -185,7 +185,10 @@
 
     async function connectAbly(room){
       wsState.textContent = 'SIG:connecting…';
-      ably = new Ably.Realtime({ authUrl: '/.netlify/functions/ably-token' });
+      // absolute URL avoids base-path issues on Netlify
+      ably = new Ably.Realtime({ authUrl: location.origin + '/.netlify/functions/ably-token' });
+      // debug Ably state in console
+      ably.connection.on((s) => console.log('Ably state:', s));
 
       try {
         await ablyConnectedOnce(ably);
@@ -229,7 +232,7 @@
       if (sender && sender.getParameters){
         const p = sender.getParameters();
         p.degradationPreference = 'maintain-framerate';
-        p.encodings = [{ maxBitrate: 64000, dtx:true, ptime:20 }];
+        p.encodings = [{ maxBitrate: 64000, dtx:true, ptime:20 } ];
         try { await sender.setParameters(p); } catch(_){}
       }
 
