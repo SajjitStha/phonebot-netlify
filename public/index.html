@@ -37,7 +37,7 @@
     .status{ opacity:.8; font-size:.9rem; margin-left:6px; }
     #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
   </style>
-  <!-- Ably CDN (callback-based API) -->
+  <!-- Ably CDN -->
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
 <body>
@@ -80,14 +80,13 @@
   <button id="tapToUnmute">🔊 Tap to hear</button>
 
   <script>
-    // ---------- Role & URL ----------
+    // ========= Role & DOM =========
     const q = new URLSearchParams(location.search);
-    const role = (q.get('role') || 'controller').toLowerCase(); // default: controller
+    const role = (q.get('role') || 'controller').toLowerCase();
     const urlRoom = q.get('room') || '';
     document.getElementById('roleBadge').textContent = 'Role: ' + role;
     if (role === 'display') document.body.classList.add('display-mode');
 
-    // ---------- DOM ----------
     const face = document.getElementById('face');
     const eyeL = document.getElementById('eyeL'), eyeR = document.getElementById('eyeR');
     const irisL = document.getElementById('irisL'), irisR = document.getElementById('irisR');
@@ -97,14 +96,14 @@
     const rtcState = document.getElementById('rtcState');
     const tapToUnmute = document.getElementById('tapToUnmute');
 
-    // ---------- Eyes ----------
+    // ========= Eyes =========
     const LOOK_MAP = { left:-1, center:0, right:+1 };
     function applyLook(dir){ const sx=(LOOK_MAP[dir] ?? 0)*26; irisL.style.transform=`translate(${sx}%,0)`; irisR.style.transform=`translate(${sx}%,0)`; }
     function doBlink(){ [eyeL,eyeR].forEach(e=>e.classList.add('blink')); setTimeout(()=>[eyeL,eyeR].forEach(e=>e.classList.remove('blink')), 400); }
     function doWink(side){ const cls = side==='L' ? 'winkL' : 'winkR'; face.classList.add(cls); setTimeout(()=>face.classList.remove('winkL','winkR'), 420); }
     applyLook('center');
 
-    // ---------- Bars (controller mic level) ----------
+    // ========= Bars =========
     function renderBars(n){ barsWrap.innerHTML=''; for(let i=0;i<n;i++){ const b=document.createElement('div'); b.className='bar'; b.style.height='6%'; barsWrap.appendChild(b); } }
     renderBars(18);
     let audioCtx, analyser, data, rafId;
@@ -126,7 +125,7 @@
       })();
     }
 
-    // ---------- Signaling via Ably (CDN = callbacks only) ----------
+    // ========= Ably + WebRTC =========
     let ably, channel, pc, ctrlChan=null;
     function updateRTC(){ rtcState.textContent = 'RTC:' + (pc?.connectionState || '?'); }
 
@@ -171,61 +170,77 @@
       return pc;
     }
 
-    function connectAbly(room){
-      wsState.textContent = 'SIG:connecting…';
-      // CDN build: Ably.Realtime (no Promise). queryTime fixes clock skew; clientId matches function.
-      ably = new Ably.Realtime({
-        authUrl: location.origin + '/.netlify/functions/ably-token',
-        clientId: 'phonebot-client',
-        queryTime: true,
-        transports: ['web_socket','xhr_streaming','xhr_polling'],
-        queueMessages: false,
-        log: { level: 2 }
-      });
+    function connectAblyWithTokenRequest(room){
+      wsState.textContent = 'SIG:fetching token…';
+      // 1) Fetch a signed TokenRequest from your Netlify function.
+      fetch('/.netlify/functions/ably-token', { cache:'no-store' })
+        .then(r => r.json())
+        .then((tokenRequest) => {
+          wsState.textContent = 'SIG:connecting…';
+          // 2) Create Ably Realtime using a pure CALLBACK auth flow.
+          //    Ably will call authCallback(tokenParams, callback). We MUST invoke callback(err, tokenRequest).
+          ably = new Ably.Realtime({
+            authCallback: function(tokenParams, callback){
+              try { callback(null, tokenRequest); }
+              catch (e) { callback(e); }
+            },
+            clientId: 'phonebot-client',
+            queryTime: true,
+            transports: ['web_socket','xhr_streaming','xhr_polling'],
+            queueMessages: false,
+            log: { level: 2 }
+          });
 
-      // When Ably connects, set up channel & subscribe THEN proceed.
-      ably.connection.on('connected', () => {
-        wsState.textContent = 'SIG:connected';
-        channel = ably.channels.get('phonebot:' + room);
+          ably.connection.on('connected', function(){
+            wsState.textContent = 'SIG:connected';
+            channel = ably.channels.get('phonebot:' + room);
 
-        channel.subscribe('signal', async (msg) => {
-          const m = msg.data;
-          try {
-            if (m.type === 'offer' && role === 'display') {
-              await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
-              const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
-              channel.publish('signal', { type:'answer', sdp: ans.sdp });
-            } else if (m.type === 'answer' && role === 'controller') {
-              await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
-            } else if (m.type === 'ice') {
-              await pc.addIceCandidate(m.candidate);
+            channel.subscribe('signal', function(msg){
+              const m = msg.data;
+              (async () => {
+                try {
+                  if (m.type === 'offer' && role === 'display') {
+                    await pc.setRemoteDescription({ type:'offer', sdp:m.sdp });
+                    const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+                    channel.publish('signal', { type:'answer', sdp: ans.sdp });
+                  } else if (m.type === 'answer' && role === 'controller') {
+                    await pc.setRemoteDescription({ type:'answer', sdp:m.sdp });
+                  } else if (m.type === 'ice') {
+                    await pc.addIceCandidate(m.candidate);
+                  }
+                } catch (err) {
+                  console.warn('RTC signal handling error:', err);
+                }
+              })();
+            });
+
+            // proceed by role
+            if (role === 'controller') startControllerMediaAndOffer();
+            else {
+              try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
+              const unlock = async ()=>{
+                try{
+                  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+                  if (audioCtx.state !== 'running') await audioCtx.resume();
+                  if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
+                  if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
+                }catch(_){}
+                window.removeEventListener('click', unlock);
+                window.removeEventListener('touchstart', unlock);
+              };
+              window.addEventListener('click', unlock, { once:true });
+              window.addEventListener('touchstart', unlock, { once:true, passive:true });
             }
-          } catch (err) {
-            console.warn('RTC signal handling error:', err);
-          }
+          });
+
+          ably.connection.on('failed', function(e){ wsState.textContent='SIG:ERROR'; console.error('Ably failed', e); alert('Ably failed: ' + (e?.reason?.message || e?.message || e)); });
+          ably.connection.on('suspended', function(e){ wsState.textContent='SIG:SUSP'; console.warn('Ably suspended', e); });
+        })
+        .catch((err) => {
+          wsState.textContent = 'SIG:ERROR';
+          console.error('Token fetch failed', err);
+          alert('Could not fetch Ably token: ' + (err?.message || err));
         });
-
-        // After signaling is ready, proceed with role-specific media
-        if (role === 'controller') startControllerMediaAndOffer();
-        else {
-          try { pc.addTransceiver('audio', { direction:'recvonly' }); } catch {}
-          const unlock = async ()=>{
-            try{
-              if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-              if (audioCtx.state !== 'running') await audioCtx.resume();
-              if (sink.srcObject) { sink.muted=false; sink.volume=1.0; await sink.play().catch(()=>{}); }
-              if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
-            }catch(_){}
-            window.removeEventListener('click', unlock);
-            window.removeEventListener('touchstart', unlock);
-          };
-          window.addEventListener('click', unlock, { once:true });
-          window.addEventListener('touchstart', unlock, { once:true, passive:true });
-        }
-      });
-
-      ably.connection.on('failed', (e) => { wsState.textContent = 'SIG:ERROR'; console.error('Ably failed', e); alert('Ably failed: ' + (e?.reason?.message || e?.message || e)); });
-      ably.connection.on('suspended', (e) => { wsState.textContent = 'SIG:SUSP'; console.warn('Ably suspended', e); });
     }
 
     function sendSignal(obj){ channel && channel.publish('signal', obj); }
@@ -254,20 +269,19 @@
       sendSignal({ type:'offer', sdp: offer.sdp });
     }
 
-    async function connect(room){
+    function connect(room){
       makePeer();
-      connectAbly(room); // no await; we continue when connection 'connected' fires
+      connectAblyWithTokenRequest(room); // we control the auth callback, so no promise/callback mismatch
     }
 
     async function hardReconnect(){
       try{ pc.getSenders().forEach(s => s.track && s.track.stop()); }catch(_){}
       try{ pc.close(); }catch(_){}
       makePeer();
-      // Re-negotiate if already connected & channel exists
       if (role === 'controller' && channel) startControllerMediaAndOffer();
     }
 
-    // Wire UI
+    // UI wiring
     if (role === 'display' && urlRoom) {
       connect(urlRoom);
     } else {
@@ -277,7 +291,6 @@
       };
     }
 
-    // Controller buttons
     if (role === 'controller') {
       document.getElementById('blinkBtn').onclick = () => { doBlink(); sendCtrl({ t:'blink' }); };
       document.getElementById('winkLBtn').onclick = () => { doWink('L'); sendCtrl({ t:'wink', side:'L' }); };
@@ -289,7 +302,6 @@
       document.getElementById('reconnectBtn').onclick = () => hardReconnect();
     }
 
-    // Autoplay helper for display
     tapToUnmute.onclick = async () => {
       try{
         if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
@@ -299,7 +311,6 @@
       tapToUnmute.style.display='none';
     };
 
-    // Idle blink
     setInterval(()=> Math.random()<0.18 && doBlink(), 3800);
   </script>
 </body>
