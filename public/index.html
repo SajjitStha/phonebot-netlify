@@ -9,6 +9,7 @@
     html, body { height:100%; margin:0; background:radial-gradient(120vw 120vh at 50% 50%,#0a1320 0%,var(--bg) 60%); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif; color:var(--text); overflow:hidden; }
     body.display-mode { cursor:none; }
     body.display-mode .panel { display:none !important; }
+
     .stage{position:fixed; inset:0; display:grid; grid-template-rows:1fr auto;}
     .face{display:grid; place-items:center;}
     .eyes{display:grid; grid-auto-flow:column; gap:min(10vw,80px); align-items:center;}
@@ -20,39 +21,32 @@
     .eye.blink .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     @keyframes blinkTop{ 0%{top:-66%} 45%{top:6%} 55%{top:8%} 100%{top:-66%} }
     @keyframes blinkBot{ 0%{bottom:-66%} 45%{bottom:6%} 55%{bottom:8%} 100%{bottom:-66%} }
+
     .iris{position:absolute; width:46%; aspect-ratio:1; border-radius:50%; left:27%; top:27%; display:grid; place-items:center; z-index:1; background:radial-gradient(circle at 30% 30%,#2ff7f7 0%,#12bdbd 25%,#0e8d8d 60%,#085555 100%); box-shadow:0 0 20px var(--glow),0 0 80px #0ff3 inset; transform:translate(0,0); transition:transform .10s ease, filter .10s ease, opacity .06s;}
     .pupil{ width:calc(45% * var(--pupil-scale)); aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 40% 40%,#10232d 0%, var(--pupil) 50%, #000 100%); box-shadow:0 0 16px #000 inset; transition:width .12s; }
     .spark{ position:absolute; width:18%; height:18%; border-radius:50%; background:radial-gradient(circle,#ffffffcc 0%,transparent 70%); left:22%; top:22%; }
     .eye.blink .iris{ animation:blinkIris .36s ease-in-out; }
     @keyframes blinkIris{ 0%{opacity:1; transform:translate(0,0) scale(1)} 35%{opacity:0; transform:translate(0,-10%) scale(.9)} 60%{opacity:0; transform:translate(0,-10%) scale(.9)} 100%{opacity:1; transform:translate(0,0) scale(1)} }
+
     .winkL .eye#eyeL .lid.top,.winkR .eye#eyeR .lid.top{ animation:blinkTop .36s ease-in-out forwards; }
     .winkL .eye#eyeL .lid.bot,.winkR .eye#eyeR .lid.bot{ animation:blinkBot .36s ease-in-out forwards; }
     .winkL .eye#eyeL .iris,.winkR .eye#eyeR .iris{ animation:blinkIris .36s ease-in-out; }
+
     .mouth{ position:absolute; left:50%; transform:translateX(-50%); bottom:8vh; width:min(56vw,780px); height:min(9vh,120px); border-radius:32px; background:linear-gradient(180deg,#06121a,#08151f); box-shadow:0 8px 28px #0008 inset,0 0 18px #0009; overflow:hidden; display:grid; place-items:center; }
     .bars{ display:grid; grid-auto-flow:column; gap:6px; width:90%; height:70%; align-items:end; }
     .bar{ width:100%; border-radius:8px 8px 0 0; background:linear-gradient(180deg,var(--accent),var(--mouth)); height:10%; box-shadow:0 0 14px #0ff6; }
+
     .panel{ backdrop-filter:blur(8px); background:var(--panel); position:fixed; left:12px; right:12px; bottom:10px; display:flex; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:14px; align-items:center; }
     button{ appearance:none; border:none; outline:none; background:#0b1728; color:var(--text); padding:10px 12px; border-radius:12px; font-weight:600; box-shadow:0 2px 0 #0006 inset,0 0 0 1px #0e243a; }
     button:hover{ filter:brightness(1.12) } button:active{ transform:translateY(1px) }
     .status{ opacity:.8; font-size:.9rem; margin-left:6px; }
-    #forcePlay{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; }
-    #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
 
-    /* Debug overlay */
-    #diag {
-      position: fixed; left: 12px; top: 12px; background: #00000088; color: #d7f9ff;
-      padding: 8px 10px; border-radius: 10px; font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      max-width: 70vw; z-index: 9999; white-space: pre-wrap;
-      display: none;
-    }
-    body.debug #diag { display:block; }
+    #tapToUnmute{ position:fixed; right:12px; bottom:12px; z-index:9999; padding:10px 14px; border-radius:12px; display:none; }
   </style>
   <!-- Ably CDN -->
   <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
 <body>
-  <div id="diag"></div>
-
   <div class="stage">
     <div class="face" id="face">
       <div class="eyes">
@@ -93,12 +87,6 @@
   <button id="tapToUnmute">🔊 Tap to hear</button>
 
   <script>
-    // Enable on-page debug via ?debug=1
-    const qp = new URLSearchParams(location.search);
-    if (qp.get('debug') === '1') document.body.classList.add('debug');
-    const diag = document.getElementById('diag');
-    const logd = (...a) => { console.log(...a); if (document.body.classList.contains('debug')) diag.textContent += a.map(x => typeof x==='string'?x:JSON.stringify(x)).join(' ') + '\n'; };
-
     // --- Role & URL
     const q = new URLSearchParams(location.search);
     const role = (q.get('role') || 'controller').toLowerCase(); // default controller
@@ -145,13 +133,13 @@
       })();
     }
 
-    // --- Ably helper (Promise client + detailed reason)
+    // --- Ably helper (works with CDN build)
     function ablyConnectedOnce(client){
       return new Promise((resolve, reject) => {
-        const to = setTimeout(()=>reject(new Error('Ably connect timeout')), 20000);
-        client.connection.once('connected', s => { clearTimeout(to); resolve(s); });
-        client.connection.once('failed', s => { clearTimeout(to); reject(s?.reason || new Error('failed')); });
-        client.connection.once('suspended', s => { clearTimeout(to); reject(s?.reason || new Error('suspended')); });
+        const t = setTimeout(()=>reject(new Error('Ably connect timeout')), 10000);
+        client.connection.once('connected', ()=>{ clearTimeout(t); resolve(); });
+        client.connection.once('failed', (e)=>{ clearTimeout(t); reject(e); });
+        client.connection.once('suspended', (e)=>{ clearTimeout(t); reject(e); });
       });
     }
 
@@ -203,28 +191,27 @@
     async function connectAbly(room){
       wsState.textContent = 'SIG:connecting…';
 
-      // Use Promise client, explicit transports + debug logs
+      // IMPORTANT: clientId must match server tokenRequest; queryTime fixes clock skew (40170)
       ably = new Ably.Realtime.Promise({
         authUrl: location.origin + '/.netlify/functions/ably-token',
-        transports: ['web_socket', 'xhr_streaming', 'xhr_polling'],
+        clientId: 'phonebot-client',
+        queryTime: true,
+        transports: ['web_socket','xhr_streaming','xhr_polling'],
         queueMessages: false,
-        log: { level: 3 } // DEBUG
+        log: { level: 2 }
       });
 
-      ably.connection.on(s => { logd('Ably state:', s); if (s.reason) logd('reason:', s.reason); });
       try {
         await ablyConnectedOnce(ably);
         wsState.textContent = 'SIG:connected';
       } catch (err) {
         wsState.textContent = 'SIG:ERROR';
-        const msg = (err && (err.message || err.toString())) || 'unknown';
-        logd('Ably signaling failed:', msg);
-        if (document.body.classList.contains('debug')) diag.textContent += '\nERROR: ' + msg + '\n';
-        alert('Ably signaling failed: ' + msg);
+        console.error('Ably signaling failed:', err);
+        alert('Ably signaling failed: ' + (err?.message || err));
         throw err;
       }
 
-      channel = await ably.channels.get('phonebot:' + room);
+      channel = ably.channels.get('phonebot:' + room);
 
       channel.subscribe('signal', async (msg) => {
         const m = msg.data;
@@ -256,7 +243,7 @@
       if (sender && sender.getParameters){
         const p = sender.getParameters();
         p.degradationPreference = 'maintain-framerate';
-        p.encodings = [{ maxBitrate: 64000, dtx:true, ptime:20 } ];
+        p.encodings = [{ maxBitrate: 64000, dtx:true, ptime:20 }];
         try { await sender.setParameters(p); } catch(_){}
       }
 
