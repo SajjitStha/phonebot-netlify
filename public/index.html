@@ -1,0 +1,563 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhoneBot – Buttons + Solid Audio (Netlify + Ably)</title>
+    <style>
+        :root {
+            --bg: #0a0f14;
+            --eye: #0d1b2a;
+            --iris: #1ee6e6;
+            --pupil: #031015;
+            --glow: #19caca;
+            --accent: #6ef3ff;
+            --mouth: #12d8b5;
+            --panel: #0f172a80;
+            --text: #d7f9ff;
+            --pupil-scale: 1;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: radial-gradient(120vw 120vh at 50% 50%,#0a1320 0%,var(--bg) 60%);
+            font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+            color: var(--text);
+            overflow: hidden
+        }
+
+            body.display-mode {
+                cursor: none
+            }
+
+                body.display-mode .panel {
+                    display: none !important
+                }
+
+        .stage {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            grid-template-rows: 1fr auto
+        }
+
+        .face {
+            display: grid;
+            place-items: center
+        }
+
+        .eyes {
+            display: grid;
+            grid-auto-flow: column;
+            gap: min(10vw,80px);
+            align-items: center
+        }
+
+        .eye {
+            width: min(42vw,520px);
+            aspect-ratio: 1.6/1;
+            background: radial-gradient(120% 160% at 50% 50%,#0b1626 0%,var(--eye) 55%,#06101a 100%);
+            border-radius: 50%/60% 60% 40% 40%;
+            box-shadow: 0 0 40px #000 inset,0 0 60px #000 inset,0 0 24px var(--glow);
+            position: relative;
+            overflow: hidden
+        }
+
+        .lid {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 65%;
+            background: linear-gradient(#040a12,#02060b);
+            box-shadow: 0 14px 28px #000c;
+            z-index: 5
+        }
+
+            .lid.top {
+                top: -66%;
+                border-bottom-left-radius: 78% 135%;
+                border-bottom-right-radius: 78% 135%
+            }
+
+            .lid.bot {
+                bottom: -66%;
+                border-top-left-radius: 78% 135%;
+                border-top-right-radius: 78% 135%
+            }
+
+        .eye.blink .lid.top {
+            animation: blinkTop .36s ease-in-out forwards
+        }
+
+        .eye.blink .lid.bot {
+            animation: blinkBot .36s ease-in-out forwards
+        }
+
+        @keyframes blinkTop {
+            0% {
+                top: -66%
+            }
+
+            45% {
+                top: 6%
+            }
+
+            55% {
+                top: 8%
+            }
+
+            100% {
+                top: -66%
+            }
+        }
+
+        @keyframes blinkBot {
+            0% {
+                bottom: -66%
+            }
+
+            45% {
+                bottom: 6%
+            }
+
+            55% {
+                bottom: 8%
+            }
+
+            100% {
+                bottom: -66%
+            }
+        }
+
+        .iris {
+            position: absolute;
+            width: 46%;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            left: 27%;
+            top: 27%;
+            display: grid;
+            place-items: center;
+            z-index: 1;
+            background: radial-gradient(circle at 30% 30%,#2ff7f7 0%,#12bdbd 25%,#0e8d8d 60%,#085555 100%);
+            box-shadow: 0 0 20px var(--glow),0 0 80px #0ff3 inset;
+            transform: translate(0,0);
+            transition: transform .10s ease,filter .10s ease,opacity .06s
+        }
+
+        .pupil {
+            width: calc(45% * var(--pupil-scale));
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%,#10232d 0%, var(--pupil) 50%, #000 100%);
+            box-shadow: 0 0 16px #000 inset;
+            transition: width .12s
+        }
+
+        .spark {
+            position: absolute;
+            width: 18%;
+            height: 18%;
+            border-radius: 50%;
+            background: radial-gradient(circle,#ffffffcc 0%,transparent 70%);
+            left: 22%;
+            top: 22%
+        }
+
+        .eye.blink .iris {
+            animation: blinkIris .36s ease-in-out
+        }
+
+        @keyframes blinkIris {
+            0% {
+                opacity: 1;
+                transform: translate(0,0) scale(1)
+            }
+
+            35% {
+                opacity: 0;
+                transform: translate(0,-10%) scale(0.9)
+            }
+
+            60% {
+                opacity: 0;
+                transform: translate(0,-10%) scale(0.9)
+            }
+
+            100% {
+                opacity: 1;
+                transform: translate(0,0) scale(1)
+            }
+        }
+
+        .winkL .eye#eyeL .lid.top, .winkR .eye#eyeR .lid.top {
+            animation: blinkTop .36s ease-in-out forwards
+        }
+
+        .winkL .eye#eyeL .lid.bot, .winkR .eye#eyeR .lid.bot {
+            animation: blinkBot .36s ease-in-out forwards
+        }
+
+        .winkL .eye#eyeL .iris, .winkR .eye#eyeR .iris {
+            animation: blinkIris .36s ease-in-out
+        }
+
+        .mouth {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 8vh;
+            width: min(56vw,780px);
+            height: min(9vh,120px);
+            border-radius: 32px;
+            background: linear-gradient(180deg,#06121a,#08151f);
+            box-shadow: 0 8px 28px #0008 inset,0 0 18px #0009;
+            overflow: hidden;
+            display: grid;
+            place-items: center
+        }
+
+        .bars {
+            display: grid;
+            grid-auto-flow: column;
+            gap: 6px;
+            width: 90%;
+            height: 70%;
+            align-items: end
+        }
+
+        .bar {
+            width: 100%;
+            border-radius: 8px 8px 0 0;
+            background: linear-gradient(180deg,var(--accent),var(--mouth));
+            height: 10%;
+            box-shadow: 0 0 14px #0ff6
+        }
+
+        .panel {
+            backdrop-filter: blur(8px);
+            background: var(--panel);
+            position: fixed;
+            left: 12px;
+            right: 12px;
+            bottom: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 10px 12px;
+            border-radius: 14px;
+            align-items: center
+        }
+
+        button {
+            appearance: none;
+            border: none;
+            outline: none;
+            background: #0b1728;
+            color: var(--text);
+            padding: 10px 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            box-shadow: 0 2px 0 #0006 inset,0 0 0 1px #0e243a
+        }
+
+            button:hover {
+                filter: brightness(1.12)
+            }
+
+            button:active {
+                transform: translateY(1px)
+            }
+
+        .status {
+            opacity: .8;
+            font-size: .9rem;
+            margin-left: 6px
+        }
+
+        #forcePlay {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            z-index: 9999;
+            padding: 10px 14px;
+            border-radius: 12px
+        }
+
+        #tapToUnmute {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            z-index: 9999;
+            padding: 10px 14px;
+            border-radius: 12px;
+            display: none
+        }
+    </style>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+</head>
+<body>
+    <div class="stage">
+        <div class="face" id="face">
+            <div class="eyes">
+                <div class="eye" id="eyeL">
+                    <div class="lid top"></div><div class="lid bot"></div>
+                    <div class="iris" id="irisL"><div class="pupil"></div><div class="spark"></div></div>
+                </div>
+                <div class="eye" id="eyeR">
+                    <div class="lid top"></div><div class="lid bot"></div>
+                    <div class="iris" id="irisR"><div class="pupil"></div><div class="spark"></div></div>
+                </div>
+            </div>
+        </div>
+        <div class="mouth"><div class="bars" id="bars"></div></div>
+    </div>
+
+    <!-- Controller-only panel -->
+    <div class="panel" id="panel">
+        <span id="roleBadge">Role: …</span>
+        <input id="room" type="text" placeholder="room-id (e.g., sajbot)" style="min-width:150px" />
+        <button id="connect">🔗 Connect</button>
+        <button id="reconnectBtn">🔁 Reconnect</button>
+        <span class="status" id="wsState">SIG:–</span>
+        <span class="status" id="rtcState">RTC:–</span>
+
+        <div style="gap:8px; display:flex; flex-wrap:wrap; margin-left:auto">
+            <button id="blinkBtn">😉 Blink</button>
+            <button id="winkLBtn">😉 Wink L</button>
+            <button id="winkRBtn">😉 Wink R</button>
+            <button id="lookLeftBtn">👀 Left</button>
+            <button id="lookCenterBtn">👀 Center</button>
+            <button id="lookRightBtn">👀 Right</button>
+            <button id="testToneBtn">🔊 Test</button>
+        </div>
+    </div>
+
+    <audio id="sink" autoplay playsinline style="display:none"></audio>
+    <button id="tapToUnmute">🔊 Tap to hear</button>
+
+    <script>
+        // ===== Role & URL =====
+        const q = new URLSearchParams(location.search);
+        const role = (q.get('role') || 'controller').toLowerCase();     // default controller on the web
+        const urlRoom = q.get('room') || '';
+        document.getElementById('roleBadge').textContent = 'Role: ' + role;
+        if (role === 'display') document.body.classList.add('display-mode');
+
+        // ===== DOM =====
+        const face = document.getElementById('face');
+        const eyeL = document.getElementById('eyeL'), eyeR = document.getElementById('eyeR');
+        const irisL = document.getElementById('irisL'), irisR = document.getElementById('irisR');
+        const barsWrap = document.getElementById('bars');
+        const sink = document.getElementById('sink');
+        const wsState = document.getElementById('wsState');
+        const rtcState = document.getElementById('rtcState');
+        const tapToUnmute = document.getElementById('tapToUnmute');
+
+        // ===== Eye control =====
+        const LOOK_MAP = { left: -1, center: 0, right: +1 }; // -1..+1
+        function applyLook(dir) {
+            const sx = (LOOK_MAP[dir] ?? 0) * 26;
+            irisL.style.transform = `translate(${sx}%, 0)`;
+            irisR.style.transform = `translate(${sx}%, 0)`;
+        }
+        function doBlink() {
+            [eyeL, eyeR].forEach(e => e.classList.add('blink'));
+            setTimeout(() => [eyeL, eyeR].forEach(e => e.classList.remove('blink')), 400);
+        }
+        function doWink(side) {
+            const cls = side === 'L' ? 'winkL' : 'winkR';
+            face.classList.add(cls);
+            setTimeout(() => face.classList.remove('winkL', 'winkR'), 420);
+        }
+        applyLook('center');
+
+        // ===== Bars & audio meter =====
+        function renderBars(n) { barsWrap.innerHTML = ''; for (let i = 0; i < n; i++) { const b = document.createElement('div'); b.className = 'bar'; b.style.height = '6%'; barsWrap.appendChild(b); } }
+        renderBars(18);
+        let audioCtx, analyser, data, rafId;
+        function attachLevelMeter(stream) {
+            if (rafId) cancelAnimationFrame(rafId);
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const src = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024; src.connect(analyser);
+            data = new Uint8Array(analyser.fftSize);
+            const bars = [...document.querySelectorAll('.bar')];
+            (function loop() {
+                analyser.getByteTimeDomainData(data);
+                let sum = 0; for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+                const rms = Math.sqrt(sum / data.length);
+                const level = Math.min(1, rms * 6);
+                const n = bars.length, mid = Math.floor(n / 2);
+                for (let i = 0; i < n; i++) { const k = Math.abs(i - mid) / (mid || 1); bars[i].style.height = Math.max(6, (1 - k * .85) * level * 100) + '%'; }
+                rafId = requestAnimationFrame(loop);
+            })();
+        }
+
+        // ===== Signaling via Ably =====
+        let ably, channel, pc, ctrlChan = null;
+
+        function updateRTC() { rtcState.textContent = 'RTC:' + (pc?.connectionState || '?'); }
+
+        function makePeer() {
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] // public STUN for internet
+            });
+            pc.onconnectionstatechange = updateRTC;
+            pc.oniceconnectionstatechange = updateRTC;
+            pc.onicecandidate = e => { if (e.candidate) sendSignal({ type: 'ice', candidate: e.candidate }); };
+
+            if (role === 'controller') {
+                ctrlChan = pc.createDataChannel('ctrl');
+            } else {
+                pc.ondatachannel = (e) => {
+                    if (e.channel.label === 'ctrl') {
+                        const ch = e.channel;
+                        ch.onmessage = (ev) => {
+                            try {
+                                const msg = JSON.parse(ev.data);
+                                if (msg.t === 'blink') doBlink();
+                                else if (msg.t === 'wink') doWink(msg.side);
+                                else if (msg.t === 'look') applyLook(msg.dir);
+                                else if (msg.t === 'testTone') {
+                                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                                    const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+                                    o.connect(g).connect(audioCtx.destination); o.frequency.value = 880; g.gain.value = 0.2;
+                                    o.start(); setTimeout(() => { o.stop(); o.disconnect(); g.disconnect(); }, 400);
+                                }
+                            } catch (e) { console.warn(e); }
+                        };
+                    }
+                };
+            }
+
+            pc.ontrack = async (e) => {
+                if (role !== 'display') return; // only displays play the controller's audio
+                const st = new MediaStream();
+                e.streams[0].getAudioTracks().forEach(t => st.addTrack(t));
+                const el = sink;
+                el.srcObject = st; el.muted = false; el.volume = 1.0;
+                try { await el.play(); } catch { tapToUnmute.style.display = 'inline-flex'; }
+            };
+
+            return pc;
+        }
+
+        async function connectAbly(room) {
+            wsState.textContent = 'SIG:connecting…';
+            ably = new Ably.Realtime.Promise({ authUrl: '/.netlify/functions/ably-token' });
+            await ably.connection.once('connected');
+            wsState.textContent = 'SIG:connected';
+            channel = await ably.channels.get('phonebot:' + room);
+
+            await channel.subscribe('signal', async (msg) => {
+                const m = msg.data;
+                if (m.type === 'offer' && role === 'display') {
+                    await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
+                    const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+                    sendSignal({ type: 'answer', sdp: ans.sdp });
+                } else if (m.type === 'answer' && role === 'controller') {
+                    await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp });
+                } else if (m.type === 'ice') {
+                    try { await pc.addIceCandidate(m.candidate); } catch (e) { console.warn(e); }
+                }
+            });
+        }
+        function sendSignal(obj) { channel && channel.publish('signal', obj); }
+        function sendCtrl(payload) { ctrlChan && ctrlChan.readyState === 'open' && ctrlChan.send(JSON.stringify(payload)); }
+
+        async function startControllerMediaAndOffer() {
+            // fresh mic stream
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+                video: false
+            });
+
+            // stop previous senders' tracks (if any)
+            pc.getSenders().forEach(s => { try { if (s.track) s.track.stop(); } catch (_) { } });
+            stream.getAudioTracks().forEach(t => pc.addTrack(t, stream));
+            attachLevelMeter(stream);
+
+            // prefer lower bitrate / DTX
+            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+            if (sender && sender.getParameters) {
+                const p = sender.getParameters();
+                p.degradationPreference = 'maintain-framerate';
+                p.encodings = [{ maxBitrate: 64000, dtx: true, ptime: 20 }];
+                try { await sender.setParameters(p); } catch (_) { }
+            }
+
+            const offer = await pc.createOffer({ offerToReceiveAudio: false });
+            await pc.setLocalDescription(offer);
+            sendSignal({ type: 'offer', sdp: offer.sdp });
+        }
+
+        async function connect(room) {
+            makePeer();
+            await connectAbly(room);
+            if (role === 'controller') {
+                await startControllerMediaAndOffer();
+                navigator.mediaDevices.addEventListener('devicechange', async () => { try { await hardReconnect(); } catch (_) { } });
+            } else {
+                // ensure we will receive even if controller adds later
+                try { pc.addTransceiver('audio', { direction: 'recvonly' }); } catch { }
+                const unlock = async () => {
+                    try {
+                        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        if (audioCtx.state !== 'running') await audioCtx.resume();
+                        if (sink.srcObject) { sink.muted = false; sink.volume = 1.0; await sink.play().catch(() => { }); }
+                        if (document.fullscreenEnabled && !document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); }
+                    } catch (_) { }
+                    window.removeEventListener('click', unlock);
+                    window.removeEventListener('touchstart', unlock);
+                };
+                window.addEventListener('click', unlock, { once: true });
+                window.addEventListener('touchstart', unlock, { once: true, passive: true });
+            }
+        }
+
+        async function hardReconnect() {
+            try { pc.getSenders().forEach(s => s.track && s.track.stop()); } catch (_) { }
+            try { pc.close(); } catch (_) { }
+            makePeer();
+            await startControllerMediaAndOffer();
+        }
+
+        // Wire UI
+        if (role === 'display' && urlRoom) {
+            connect(urlRoom);
+        } else {
+            document.getElementById('connect').onclick = () => {
+                const r = (document.getElementById('room').value.trim() || 'default');
+                connect(r);
+            };
+        }
+
+        // Controller buttons: local + mirror to display via datachannel
+        if (role === 'controller') {
+            document.getElementById('blinkBtn').onclick = () => { doBlink(); sendCtrl({ t: 'blink' }); };
+            document.getElementById('winkLBtn').onclick = () => { doWink('L'); sendCtrl({ t: 'wink', side: 'L' }); };
+            document.getElementById('winkRBtn').onclick = () => { doWink('R'); sendCtrl({ t: 'wink', side: 'R' }); };
+            document.getElementById('lookLeftBtn').onclick = () => { applyLook('left'); sendCtrl({ t: 'look', dir: 'left' }); };
+            document.getElementById('lookCenterBtn').onclick = () => { applyLook('center'); sendCtrl({ t: 'look', dir: 'center' }); };
+            document.getElementById('lookRightBtn').onclick = () => { applyLook('right'); sendCtrl({ t: 'look', dir: 'right' }); };
+            document.getElementById('testToneBtn').onclick = () => sendCtrl({ t: 'testTone' });
+            document.getElementById('reconnectBtn').onclick = () => hardReconnect();
+        }
+
+        // Autoplay helper for display
+        tapToUnmute.onclick = async () => {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state !== 'running') await audioCtx.resume();
+                sink.muted = false; sink.volume = 1.0; await sink.play();
+            } catch (_) { }
+            tapToUnmute.style.display = 'none';
+        };
+
+        // Optional: idle blink
+        setInterval(() => Math.random() < 0.18 && doBlink(), 3800);
+    </script>
+</body>
+</html>
